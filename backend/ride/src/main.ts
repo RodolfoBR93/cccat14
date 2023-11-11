@@ -37,7 +37,7 @@ function extractCheckDigit (cpf: string) {
 }
 
 export async function signup (input: any): Promise<any> {
-	const connection = pgp()("postgres://postgres:123456@localhost:5432/app");
+	const connection = pgp()("postgres://postgres:admin@localhost:5432/app");
 	try {
 		const accountId = crypto.randomUUID();
 		const [account] = await connection.query("select * from cccat14.account where email = $1", [input.email]);
@@ -68,8 +68,52 @@ function isInvalidCarPlate (carPlate: string) {
 }
 
 export async function getAccount (accountId: string) {
-	const connection = pgp()("postgres://postgres:123456@localhost:5432/app");
+	const connection = pgp()("postgres://postgres:admin@localhost:5432/app");
 	const [account] = await connection.query("select * from cccat14.account where account_id = $1", [accountId]);
 	await connection.$pool.end();
 	return account;
 }
+
+export async function getRideIncomplete(accountId: string){
+  const connection = pgp()("postgres://postgres:admin@localhost:5432/app");
+  const ride = await connection.query("select passenger_id from cccat14.ride where status <> 'completed' and  passenger_id = $1", [accountId]);
+  await connection.$pool.end();
+  return ride;
+}
+
+export async function requestRide(userInput: any): Promise<any> {
+  const connection = pgp()("postgres://postgres:admin@localhost:5432/app");
+  try{
+    const user = await getAccount(userInput.account_id);
+    if (user === undefined ) throw new Error("Invalid user")
+    if(!user.is_passenger) throw new Error("Invalid user")
+
+    const incompleteRide = await getRideIncomplete(user.account_id);
+    console.log(incompleteRide)
+    if(incompleteRide && incompleteRide.length > 0) throw new Error("Já existe uma corrida não finalizada")
+
+    const rideId = crypto.randomUUID();
+    await connection.query('insert into cccat14.ride(ride_id, passenger_id,status, from_lat, from_long, to_lat, to_long, date ) values ($1, $2, $3, $4, $5, $6, $7, $8)',[rideId, user.account_id,'requested', userInput.from.lat, userInput.from.lng, userInput.to.lat, userInput.to.lng, new Date()]);
+    return {
+      rideId
+    }
+  }finally{
+    await connection.$pool.end();
+  }
+
+}
+// try {
+//   const accountId = crypto.randomUUID();
+//   const [account] = await connection.query("select * from cccat14.account where email = $1", [input.email]);
+//   if (account) throw new Error("Duplicated account");
+//   if (isInvalidName(input.name)) throw new Error("Invalid name");
+//   if (isInvalidEmail(input.email)) throw new Error("Invalid email");
+//   if (!validateCpf(input.cpf)) throw new Error("Invalid cpf");
+//   if (input.isDriver && isInvalidCarPlate(input.carPlate)) throw new Error("Invalid car plate");
+//   await connection.query("insert into cccat14.account (account_id, name, email, cpf, car_plate, is_passenger, is_driver) values ($1, $2, $3, $4, $5, $6, $7)", [accountId, input.name, input.email, input.cpf, input.carPlate, !!input.isPassenger, !!input.isDriver]);
+//   return {
+//     accountId
+//   };
+// } finally {
+//   await connection.$pool.end();
+// }
